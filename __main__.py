@@ -7,8 +7,9 @@ import math
 import time
 
 assert not pygame.init()[-1], "初始化失败(pygame存在未初始化的模块)"
-on_time: float = 10000  # 一次计算的时间间隔(沙盘时间)
-world_time: float = 0.01  # 一个on_time等于实际的时间
+on_time: float = 1000  # 一次计算的时间间隔( = 沙盘时间 / on_run)
+on_run: int = 20  # 运行 on_run 次,绘图一次
+world_time: float = 0.001  # 一个on_time * on_run等于实际的时间
 
 UA = 149597870700
 on_m: float = UA / 350  # 1UA的10分之一
@@ -43,7 +44,7 @@ class Planet(metaclass=abc.ABCMeta):
         self.color = color
 
     @abc.abstractmethod
-    def draw(self, dx, dy, max_x, max_y, is_center=True):  # dx和dy是偏移量
+    def draw(self, dx, dy, max_x, max_y, is_center=True, is_draw=True):  # dx和dy是偏移量
         pass
 
     def get_xy(self):  # dx和dy是偏移量
@@ -77,7 +78,10 @@ class Sun(Planet):
         self.set_name("Sun")
         self.color = (255, 0, 0)
 
-    def draw(self, dx, dy, max_x, max_y, is_center=True):  # dx和dy是偏移量
+    def draw(self, dx, dy, max_x, max_y, is_center=True, is_draw=True) -> None:  # dx和dy是偏移量
+        if not is_draw:
+            return
+
         dx = int(dx / on_m)
         dy = int(dy / on_m)
         if (0 <= dx < max_x and 0 <= dy < max_y) or is_center:
@@ -114,8 +118,11 @@ class RunPlanet(Planet):
         self.v = v
         self.v_type = v_type
 
-    def draw(self, dx, dy, max_x, max_y, is_center=True):  # dx和dy是偏移量
+    def draw(self, dx, dy, max_x, max_y, is_center=True, is_draw=True):  # dx和dy是偏移量
         self.run()
+        if not is_draw:
+            return
+
         if is_center:
             dx += -self.x
             dy += -self.y
@@ -128,7 +135,7 @@ class RunPlanet(Planet):
 
     def run(self):
         cx, cy = self.center.get_xy()
-        # 保持与地球相对静止
+        # 保持与中心天体相对静止
         self.dx, self.dy = self.center.get_dxy()
         sx, sy = self.get_xy()
         sx += self.dx
@@ -233,17 +240,25 @@ class WorldControl:
         self.center = 0  # 跟踪对象
 
     def draw(self) -> None:
+        draw_count = 0
         while True:
-            screen.fill((0, 0, 0))
-            self.plant_list[self.center].draw(self.dx, self.dy, self.mx, self.my, is_center=True)  # 先画参考对象
+            is_draw = bool(draw_count == 0)
+            if is_draw:
+                screen.fill((0, 0, 0))
+            self.plant_list[self.center].draw(self.dx, self.dy, self.mx, self.my, is_center=True, is_draw=is_draw)  # 先画参考对象
             x, y = self.plant_list[self.center].get_xy()  # 获取偏移
             for p in self.plant_list[::-1]:
                 if p == self.plant_list[self.center]:  # 不绘制参考对象(已经绘制过了)
                     continue
-                p.draw(self.dx - x, self.dy - y, self.mx, self.my, is_center=False)
-            display.update()
-            self.event(pygame.event.get())
+                p.draw(self.dx - x, self.dy - y, self.mx, self.my, is_center=False, is_draw=is_draw)
+            if is_draw:
+                display.update()
+                self.event(pygame.event.get())
             time.sleep(world_time)
+            if is_draw:
+                draw_count = on_run
+            else:
+                draw_count -= 1
 
     def new_on_m(self, old, new):
         dx = self.dx / old
